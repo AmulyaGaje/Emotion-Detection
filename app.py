@@ -3,82 +3,166 @@
 import streamlit as st
 import tensorflow as tf
 import numpy as np
+import pandas as pd
 import pickle
 import re
-import pandas as pd
-import plotly.express as px
-import gdown
 import os
+import gdown
+
+import plotly.express as px
+import plotly.graph_objects as go
 
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
-# ---------------------------------------------------
-# Page Configuration
-# ---------------------------------------------------
+# =========================================================
+# PAGE CONFIGURATION
+# =========================================================
 
 st.set_page_config(
-    page_title="Mental Health Sentiment Monitoring",
+    page_title="AI Mental Health Dashboard",
     page_icon="🧠",
     layout="wide"
 )
 
-# ---------------------------------------------------
-# Custom CSS Styling
-# ---------------------------------------------------
+# =========================================================
+# CUSTOM CSS
+# =========================================================
 
 st.markdown("""
 <style>
 
-.main {
-    background-color: #0E1117;
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Poppins', sans-serif;
+}
+
+.stApp {
+    background: linear-gradient(
+        135deg,
+        #0f172a,
+        #111827,
+        #1e293b
+    );
     color: white;
 }
 
-h1 {
-    color: #00D4FF;
+.main-title {
     text-align: center;
+    font-size: 52px;
+    font-weight: 700;
+    color: #38bdf8;
 }
 
-h2 {
-    color: #00FFA3;
+.subtitle {
+    text-align: center;
+    color: #cbd5e1;
+    font-size: 18px;
+    margin-bottom: 20px;
+}
+
+.glass {
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px);
+    border-radius: 20px;
+    padding: 25px;
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    margin-bottom: 20px;
+}
+
+.metric-card {
+    background: linear-gradient(
+        135deg,
+        rgba(56,189,248,0.25),
+        rgba(59,130,246,0.15)
+    );
+    padding: 20px;
+    border-radius: 18px;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.metric-value {
+    font-size: 32px;
+    font-weight: bold;
+    color: #38bdf8;
+}
+
+.metric-label {
+    color: #e2e8f0;
+    font-size: 16px;
 }
 
 .stButton>button {
-    background-color: #00D4FF;
-    color: black;
-    font-size: 18px;
-    border-radius: 10px;
-    height: 3em;
+    background: linear-gradient(
+        90deg,
+        #06b6d4,
+        #3b82f6
+    );
+    color: white;
+    border: none;
+    border-radius: 15px;
+    height: 55px;
+    font-size: 20px;
+    font-weight: 600;
     width: 100%;
-    font-weight: bold;
+    transition: 0.3s;
 }
 
-.stTextArea textarea {
-    background-color: #1E1E1E;
-    color: white;
-    border-radius: 10px;
+.stButton>button:hover {
+    transform: scale(1.02);
+}
+
+textarea {
+    background-color: rgba(255,255,255,0.08) !important;
+    color: white !important;
+    border-radius: 15px !important;
 }
 
 .result-box {
-    padding: 20px;
-    border-radius: 15px;
-    background-color: white;
+    background: rgba(255,255,255,0.08);
+    padding: 25px;
+    border-radius: 18px;
     margin-top: 20px;
 }
 
 .tip-box {
-    padding: 15px;
-    border-radius: 10px;
-    background-color: white;
+    background: rgba(56,189,248,0.1);
+    padding: 20px;
+    border-radius: 15px;
     margin-top: 10px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------
-# Download Model from Google Drive
-# ---------------------------------------------------
+# =========================================================
+# SIDEBAR
+# =========================================================
+
+st.sidebar.title("🧭 Dashboard Navigation")
+
+menu = st.sidebar.radio(
+    "Select Section",
+    [
+        "Dashboard",
+        "Prediction",
+        "Analytics",
+        "Wellness Tips"
+    ]
+)
+
+st.sidebar.markdown("---")
+
+st.sidebar.info("""
+This AI dashboard detects emotional sentiment
+using NLP and Recurrent Neural Networks.
+""")
+
+# =========================================================
+# DOWNLOAD MODEL
+# =========================================================
 
 MODEL_URL = "https://drive.google.com/uc?id=1kxze0K5v-Ha5Xjbpb2HprimdAsbek6HD"
 
@@ -94,9 +178,9 @@ if not os.path.exists(MODEL_PATH):
             quiet=False
         )
 
-# ---------------------------------------------------
-# Load Model and Files
-# ---------------------------------------------------
+# =========================================================
+# LOAD MODEL & FILES
+# =========================================================
 
 model = tf.keras.models.load_model(
     MODEL_PATH
@@ -108,15 +192,15 @@ with open("tokenizer.pkl", "rb") as file:
 with open("label_encoder.pkl", "rb") as file:
     label_encoder = pickle.load(file)
 
-# ---------------------------------------------------
-# Parameters
-# ---------------------------------------------------
+# =========================================================
+# PARAMETERS
+# =========================================================
 
 max_length = 50
 
-# ---------------------------------------------------
-# Emotional Guidance Dictionary
-# ---------------------------------------------------
+# =========================================================
+# EMOTIONAL GUIDANCE
+# =========================================================
 
 guidance = {
 
@@ -142,23 +226,23 @@ guidance = {
 
     "Suicidal": {
         "message": "Please seek immediate support from trusted people.",
-        "tip": "Contact a mental health professional or support helpline."
+        "tip": "Contact a mental health professional immediately."
     },
 
     "Bipolar": {
         "message": "Emotional fluctuations can be managed.",
-        "tip": "Maintain proper sleep and consistent routines."
+        "tip": "Maintain healthy sleep and routines."
     },
 
     "Personality disorder": {
         "message": "Every emotion deserves understanding.",
-        "tip": "Practice mindfulness and emotional journaling."
+        "tip": "Practice mindfulness and journaling."
     }
 }
 
-# ---------------------------------------------------
-# Preprocessing Function
-# ---------------------------------------------------
+# =========================================================
+# PREPROCESSING
+# =========================================================
 
 def preprocess_text(text):
 
@@ -176,9 +260,9 @@ def preprocess_text(text):
 
     return padded
 
-# ---------------------------------------------------
-# Prediction Function
-# ---------------------------------------------------
+# =========================================================
+# PREDICTION FUNCTION
+# =========================================================
 
 def predict_emotion(text):
 
@@ -196,61 +280,71 @@ def predict_emotion(text):
 
     return emotion, confidence, prediction[0]
 
-# ---------------------------------------------------
-# SECTION 1 — Header
-# ---------------------------------------------------
+# =========================================================
+# HEADER
+# =========================================================
 
 st.markdown("""
-<h1>🧠 AI-Based Mental Health Sentiment Monitoring System</h1>
-<h4 style='text-align:center; color:lightgray;'>
+<div class="glass">
+
+<h1 class="main-title">
+🧠 AI-Based Mental Health Sentiment Monitoring System
+</h1>
+
+<p class="subtitle">
 Emotion Detection using Simple Recurrent Neural Networks
-</h4>
+</p>
+
+</div>
 """, unsafe_allow_html=True)
 
-st.divider()
+# =========================================================
+# ABOUT PROJECT
+# =========================================================
 
-# ---------------------------------------------------
-# SECTION 2 — About the Project
-# ---------------------------------------------------
+with st.container():
 
-st.header("📘 About the Project")
+    st.markdown('<div class="glass">', unsafe_allow_html=True)
 
-st.write("""
+    st.header("📘 About the Project")
+
+    st.write("""
 This project uses Artificial Intelligence and Natural Language Processing (NLP)
 to detect emotions from user-written text.
 
 ### Importance of Emotional AI
-Emotional AI helps systems understand human emotions and mental states
-through language patterns and sentiment analysis.
+Emotional AI helps systems understand human emotions and mental states.
 
 ### NLP Applications
-- Mental health monitoring
+- Mental Health Monitoring
 - Chatbots
-- Customer feedback analysis
-- Emotion recognition systems
+- Customer Feedback Analysis
+- Emotion Recognition
 
-### Role of RNN in Sequence Learning
-Simple Recurrent Neural Networks (RNNs) process text sequentially,
-remembering previous words using hidden states to understand context.
+### Role of RNN
+RNN remembers previous words using hidden states
+to understand sequence and context.
 """)
 
-st.divider()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------------------------------------------------
-# SECTION 3 — User Input Area
-# ---------------------------------------------------
+# =========================================================
+# INPUT SECTION
+# =========================================================
+
+st.markdown('<div class="glass">', unsafe_allow_html=True)
 
 st.header("✍️ Enter Your Thoughts")
 
 sample_sentences = [
     "I feel lonely and stressed.",
-    "Today is one of the happiest days of my life.",
     "Nobody understands my feelings.",
-    "I feel calm and motivated today."
+    "I feel calm and motivated today.",
+    "Today is one of the happiest days of my life."
 ]
 
 selected_sample = st.selectbox(
-    "📌 Sample Sentence Suggestions",
+    "📌 Sample Sentences",
     ["Select a sample sentence"] + sample_sentences
 )
 
@@ -266,50 +360,117 @@ user_input = st.text_area(
     height=180
 )
 
-st.divider()
+st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------------------------------------------------
-# SECTION 4 — Prediction Button
-# ---------------------------------------------------
+# =========================================================
+# ANALYZE BUTTON
+# =========================================================
 
 if st.button("🔍 Analyze Emotion"):
 
     if user_input.strip() == "":
+
         st.warning("Please enter some text.")
+
     else:
 
         emotion, confidence, probabilities = predict_emotion(user_input)
 
+        # =================================================
+        # STATUS
+        # =================================================
+
         if confidence > 80:
-            status = "High Confidence Prediction"
+            status = "High Confidence"
+
         elif confidence > 60:
-            status = "Moderate Confidence Prediction"
+            status = "Moderate Confidence"
+
         else:
-            status = "Low Confidence Prediction"
+            status = "Low Confidence"
 
-        # ---------------------------------------------------
-        # SECTION 5 — Prediction Output
-        # ---------------------------------------------------
+        # =================================================
+        # METRICS
+        # =================================================
 
-        st.header("📊 Prediction Output")
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">
+                    {emotion}
+                </div>
+                <div class="metric-label">
+                    Emotion Detected
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">
+                    {confidence:.2f}%
+                </div>
+                <div class="metric-label">
+                    Confidence Score
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col3:
+
+            risk = "Low"
+
+            if emotion in ["Depression", "Suicidal"]:
+                risk = "High"
+
+            elif emotion in ["Stress", "Anxiety"]:
+                risk = "Moderate"
+
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">
+                    {risk}
+                </div>
+                <div class="metric-label">
+                    Emotional Risk
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # =================================================
+        # PREDICTION OUTPUT
+        # =================================================
+
+        st.markdown("""
+        <br>
+        """, unsafe_allow_html=True)
 
         st.markdown(f"""
         <div class="result-box">
 
+        <h2>📊 Prediction Result</h2>
+
         <h3>Emotion Detected: {emotion}</h3>
 
-        <h4>Confidence: {confidence:.2f}%</h4>
+        <h3>Confidence: {confidence:.2f}%</h3>
 
-        <h4>Emotional Status: {status}</h4>
+        <h3>Status: {status}</h3>
 
         </div>
         """, unsafe_allow_html=True)
 
-        # ---------------------------------------------------
-        # SECTION 6 — Visualization Area
-        # ---------------------------------------------------
+        # =================================================
+        # PROBABILITY CHART
+        # =================================================
 
-        st.header("📈 Sentiment Confidence Visualization")
+        st.markdown("""
+        <br>
+        """, unsafe_allow_html=True)
 
         labels = label_encoder.classes_
 
@@ -322,67 +483,136 @@ if st.button("🔍 Analyze Emotion"):
             prob_df,
             x="Emotion",
             y="Probability",
-            title="Emotion Probability Distribution",
-            text_auto=True
+            text_auto=True,
+            title="Emotion Probability Distribution"
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
 
-        # ---------------------------------------------------
-        # SECTION 7 — Emotional Guidance
-        # ---------------------------------------------------
+        # =================================================
+        # GAUGE CHART
+        # =================================================
 
-        st.header("💡 Emotional Wellness Guidance")
+        gauge_fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=confidence,
+            title={'text': "Confidence Meter"},
+            gauge={
+                'axis': {'range': [0,100]},
+                'bar': {'color': "#38bdf8"},
+                'steps': [
+                    {'range': [0,50], 'color': "#1e293b"},
+                    {'range': [50,80], 'color': "#334155"},
+                    {'range': [80,100], 'color': "#0ea5e9"}
+                ]
+            }
+        ))
 
-        emotion_key = emotion
+        st.plotly_chart(
+            gauge_fig,
+            use_container_width=True
+        )
 
-        if emotion_key in guidance:
+        # =================================================
+        # WELLNESS SCORE
+        # =================================================
+
+        wellness_score = 100 - confidence
+
+        if emotion == "Normal":
+            wellness_score = 95
+
+        st.subheader("🌿 Wellness Score")
+
+        st.progress(int(wellness_score))
+
+        st.write(
+            f"Overall Wellness Score: {wellness_score:.1f}/100"
+        )
+
+        # =================================================
+        # WELLNESS GUIDANCE
+        # =================================================
+
+        st.subheader("💡 Emotional Wellness Guidance")
+
+        if emotion in guidance:
 
             st.markdown(f"""
             <div class="tip-box">
 
             <h4>🌟 Motivational Message</h4>
-            <p>{guidance[emotion_key]['message']}</p>
+            <p>{guidance[emotion]['message']}</p>
 
             <h4>🧘 Wellness Tip</h4>
-            <p>{guidance[emotion_key]['tip']}</p>
+            <p>{guidance[emotion]['tip']}</p>
 
             </div>
             """, unsafe_allow_html=True)
 
-        else:
+        # =================================================
+        # TEXT ANALYTICS
+        # =================================================
 
-            st.info(
-                "Stay positive and maintain a healthy lifestyle."
-            )
-
-        # ---------------------------------------------------
-        # Additional Features
-        # ---------------------------------------------------
-
-        st.header("📌 Additional Insights")
+        st.subheader("⌨️ Text Analytics")
 
         word_count = len(user_input.split())
 
-        st.write(f"📝 Word Count: {word_count}")
+        char_count = len(user_input)
 
-        sentiment_strength = confidence / 100
+        avg_word_length = sum(
+            len(word)
+            for word in user_input.split()
+        ) / max(word_count,1)
 
-        progress_value = min(int(sentiment_strength * 100), 100)
+        col1, col2, col3 = st.columns(3)
 
-        st.write("Emotion Confidence Meter")
+        col1.metric("Words", word_count)
 
-        st.progress(progress_value)
+        col2.metric("Characters", char_count)
 
-        # Download Prediction Report
+        col3.metric(
+            "Avg Word Length",
+            round(avg_word_length,2)
+        )
+
+        # =================================================
+        # SESSION HISTORY
+        # =================================================
+
+        if "history" not in st.session_state:
+            st.session_state.history = []
+
+        st.session_state.history.append({
+            "Emotion": emotion,
+            "Confidence": confidence
+        })
+
+        history_df = pd.DataFrame(
+            st.session_state.history
+        )
+
+        st.subheader("📈 Emotion History")
+
+        st.dataframe(
+            history_df,
+            use_container_width=True
+        )
+
+        # =================================================
+        # DOWNLOAD REPORT
+        # =================================================
 
         report = f"""
-Mental Health Sentiment Analysis Report
+AI Mental Health Monitoring Report
 
 User Text:
 {user_input}
 
-Predicted Emotion:
+Emotion Detected:
 {emotion}
 
 Confidence:
@@ -399,14 +629,22 @@ Status:
             mime="text/plain"
         )
 
-# ---------------------------------------------------
-# Footer
-# ---------------------------------------------------
-
-st.divider()
+# =========================================================
+# FOOTER
+# =========================================================
 
 st.markdown("""
+<hr>
+
 <center>
-sentiment analysis
+
+<h4>
+🚀 Developed using Streamlit, TensorFlow, NLP & RNN
+</h4>
+
+<p>
+AI-Based Mental Health Monitoring Dashboard
+</p>
+
 </center>
 """, unsafe_allow_html=True)

@@ -116,7 +116,7 @@ html, body, [class*="css"] {
 
 textarea {
     background-color: rgba(255,255,255,0.08) !important;
-    color: white !important;
+    color: black;
     border-radius: 15px !important;
 }
 
